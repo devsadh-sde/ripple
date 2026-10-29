@@ -6,6 +6,10 @@ import com.ripple.eventservice.entity.Event;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import org.springframework.dao.DataIntegrityViolationException;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.ServerErrorMessage;
+
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -113,4 +117,49 @@ class EventServiceTest {
 
         verifyNoInteractions(eventWriter);
     }
+
+
+    @Test
+    void shouldRetryWhenJoinCodeCollides() {
+
+        UUID organizerId = UUID.randomUUID();
+
+        String postgresError =
+                "ERROR: duplicate key value violates unique constraint "
+                + "\"events_join_code_key\"\n"
+                + "  Detail: Key (join_code)=(ABC123) already exists.";
+
+        PSQLException postgresException = new PSQLException(
+                new ServerErrorMessage(
+                        "SERROR\0"
+                        + "C23505\0"
+                        + "nevents_join_code_key\0"
+                        + "Mduplicate key value\0"
+                        + "\0"
+                )
+        );
+
+        DataIntegrityViolationException collision =
+                new DataIntegrityViolationException(
+                        postgresError,
+                        postgresException
+                );
+
+        when(eventWriter.save(any(Event.class)))
+                .thenThrow(collision)
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Event result = eventService.createEvent(
+                "Java Conference",
+                "Learning Microservices",
+                organizerId
+        );
+
+        assertNotNull(result);
+        assertEquals("Java Conference", result.getTitle());
+
+        verify(eventWriter, times(2))
+                .save(any(Event.class));
+    }
+
 }
