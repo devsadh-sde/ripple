@@ -2,10 +2,8 @@
 package com.ripple.eventservice.service;
 
 import com.ripple.eventservice.entity.Event;
-import com.ripple.eventservice.repository.EventRepository;
-
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.util.UUID;
@@ -16,67 +14,95 @@ public class EventService {
     private static final String CHARACTERS =
             "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final SecureRandom RANDOM =
+            new SecureRandom();
 
-    private final EventRepository eventRepository;
+    private static final int MAX_ATTEMPTS = 5;
 
-    // Constructor Dependency Injection
-    public EventService(EventRepository eventRepository) {
-        this.eventRepository = eventRepository;
+    private final EventWriter eventWriter;
+
+    public EventService(EventWriter eventWriter) {
+        this.eventWriter = eventWriter;
     }
 
-    // Create a new event
-    @Transactional
     public Event createEvent(
             String title,
             String description,
             UUID organizerId) {
 
-        // Validate event title
         if (title == null || title.isBlank()) {
             throw new IllegalArgumentException(
-                    "Event title cannot be empty"
-            );
+                    "Event title cannot be empty");
         }
 
-        // Validate title length
         if (title.length() > 200) {
             throw new IllegalArgumentException(
-                    "Event title cannot exceed 200 characters"
-            );
+                    "Event title cannot exceed 200 characters");
         }
 
-        // Validate organizer ID
         if (organizerId == null) {
             throw new IllegalArgumentException(
-                    "Organizer ID is required"
-            );
+                    "Organizer ID is required");
         }
 
-        // Generate a random 6-character join code
-        String joinCode = generateJoinCode();
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
 
-        // Create Event entity
-        Event event = new Event(
-                title,
-                description,
-                joinCode,
-                organizerId
-        );
+            String joinCode = generateJoinCode();
 
-        // Persist event in PostgreSQL
-        return eventRepository.save(event);
+            Event event = new Event(
+                    title,
+                    description,
+                    joinCode,
+                    organizerId
+            );
+
+            try {
+                return eventWriter.save(event);
+
+            } catch (DataIntegrityViolationException exception) {
+
+                if (!isJoinCodeCollision(exception)) {
+                    throw exception;
+                }
+
+                if (attempt == MAX_ATTEMPTS) {
+                    throw new IllegalStateException(
+                            "Could not generate a unique event code",
+                            exception);
+                }
+            }
+        }
+
+        throw new IllegalStateException(
+                "Unable to create event");
     }
 
-    // Generate a random join code
-    private String generateJoinCode() {
+    private boolean isJoinCodeCollision(
+            DataIntegrityViolationException exception) {
 
+        Throwable current = exception;
+
+        while (current != null) {
+            if (current instanceof org.postgresql.util.PSQLException sqlException) {
+                var serverError = sqlException.getServerErrorMessage();
+
+                return "23505".equals(sqlException.getSQLState())
+                        && serverError != null
+                        && "events_join_code_key".equals(
+                                serverError.getConstraint());
+            }
+
+            current = current.getCause();
+        }
+
+        return false;
+    }
+
+    private String generateJoinCode() {
         StringBuilder code = new StringBuilder();
 
         for (int i = 0; i < 6; i++) {
-
             int index = RANDOM.nextInt(CHARACTERS.length());
-
             code.append(CHARACTERS.charAt(index));
         }
 
