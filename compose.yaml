@@ -1,0 +1,21 @@
+
+services:
+  postgres-events:
+    image: postgres:17
+    container_name: ripple-postgres-events
+    environment:
+      POSTGRES_DB: ripple_events
+      POSTGRES_USER: ripple
+      POSTGRES_PASSWORD: ripple_dev_password
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - events_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ripple -d ripple_events"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  events_postgres_data:
