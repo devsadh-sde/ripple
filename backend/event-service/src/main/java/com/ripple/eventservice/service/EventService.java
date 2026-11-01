@@ -5,6 +5,9 @@ import com.ripple.eventservice.entity.Event;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
+
 import java.security.SecureRandom;
 import java.util.UUID;
 
@@ -108,4 +111,22 @@ public class EventService {
 
         return code.toString();
     }
+
+
+    public Event getEventById(Long id) {
+
+        if (id == null || id <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Event ID must be positive"
+            );
+        }
+
+        return eventWriter.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Event not found with ID: " + id
+                ));
+    }
+
 }

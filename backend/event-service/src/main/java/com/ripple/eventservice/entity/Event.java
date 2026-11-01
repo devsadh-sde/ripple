@@ -73,4 +73,24 @@ public class Event {
         return createdAt;
     }
 
+    public void start() {
+        if (!"DRAFT".equals(this.status)) {
+            throw new IllegalStateException(
+                    "Only DRAFT events can be started"
+            );
+        }
+
+        this.status = "LIVE";
+    }
+
+    public void end() {
+        if (!"LIVE".equals(this.status)) {
+            throw new IllegalStateException(
+                    "Only LIVE events can be ended"
+            );
+        }
+
+        this.status = "ENDED";
+    }
+
 }
