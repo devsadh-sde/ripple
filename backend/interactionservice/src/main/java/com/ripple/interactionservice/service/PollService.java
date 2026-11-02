@@ -59,4 +59,27 @@ public class PollService {
 
         return pollRepository.save(poll);
     }
+
+    @Transactional
+    public Poll startPoll(Long pollId) {
+        Poll poll = pollRepository.findById(pollId)
+            .orElseThrow(() -> new IllegalArgumentException(
+                "Poll not found: " + pollId
+            ));
+
+        poll.start();
+        return poll;
+    }
+
+    @Transactional
+    public Poll closePoll(Long pollId) {
+        Poll poll = pollRepository.findById(pollId)
+            .orElseThrow(() -> new IllegalArgumentException(
+                "Poll not found: " + pollId
+            ));
+
+        poll.close();
+        return poll;
+    }
+
 }

@@ -70,4 +70,25 @@ public class Poll {
     public List<PollOption> getOptions() {
         return options;
     }
+
+    public void start() {
+        if (!"DRAFT".equals(status)) {
+            throw new IllegalStateException(
+                "Only DRAFT polls can be started"
+            );
+        }
+
+        status = "LIVE";
+    }
+
+    public void close() {
+        if (!"LIVE".equals(status)) {
+            throw new IllegalStateException(
+                "Only LIVE polls can be closed"
+            );
+        }
+
+        status = "CLOSED";
+    }
+
 }
