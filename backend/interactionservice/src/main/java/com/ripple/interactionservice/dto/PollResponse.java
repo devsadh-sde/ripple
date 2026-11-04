@@ -1,5 +1,4 @@
 
-
 package com.ripple.interactionservice.dto;
 
 import com.ripple.interactionservice.entity.Poll;

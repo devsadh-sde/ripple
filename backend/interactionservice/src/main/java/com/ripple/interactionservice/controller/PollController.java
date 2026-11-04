@@ -1,5 +1,6 @@
-
 package com.ripple.interactionservice.controller;
+
+import java.util.List;
 
 import com.ripple.interactionservice.dto.CreatePollRequest;
 import com.ripple.interactionservice.dto.PollResponse;
@@ -56,4 +57,12 @@ public class PollController {
 
         return PollResponse.from(poll);
     }
+
+    @GetMapping("/event/{eventId}/live")
+    public List<PollResponse> getLivePolls(
+            @PathVariable Long eventId
+    ) {
+        return pollService.getLivePollsForEvent(eventId);
+    }
+
 }
