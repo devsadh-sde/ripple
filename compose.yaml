@@ -1,21 +1,64 @@
-
 services:
-  postgres-events:
+  postgres:
     image: postgres:17
-    container_name: ripple-postgres-events
+    restart: unless-stopped
+
     environment:
-      POSTGRES_DB: ripple_events
       POSTGRES_USER: ripple
-      POSTGRES_PASSWORD: ripple_dev_password
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_DB: ripple_events
+
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:5434:5432"
+
     volumes:
-      - events_postgres_data:/var/lib/postgresql/data
+      - ripple_postgres_data:/var/lib/postgresql/data
+      - ./docker/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ripple -d ripple_events"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 15
+
+  event-service:
+    build:
+      context: ./backend/event-service
+
+    ports:
+      - "127.0.0.1:8081:8081"
+
+    environment:
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ripple_events
+      SPRING_DATASOURCE_USERNAME: ripple
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  interaction-service:
+    build:
+      context: ./backend/interactionservice
+
+    ports:
+      - "127.0.0.1:8082:8082"
+
+    environment:
+      SERVER_PORT: 8082
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ripple_interactions
+      SPRING_DATASOURCE_USERNAME: ripple
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      RIPPLE_EVENT_SERVICE_URL: http://event-service:8081
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      event-service:
+        condition: service_started
 
 volumes:
-  events_postgres_data:
+  ripple_postgres_data:
