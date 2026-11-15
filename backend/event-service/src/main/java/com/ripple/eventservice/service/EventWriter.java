@@ -6,6 +6,8 @@ import java.util.Optional;
 import com.ripple.eventservice.entity.Event;
 import com.ripple.eventservice.repository.EventRepository;
 
+import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,4 +66,10 @@ public class EventWriter {
 
         return eventRepository.saveAndFlush(event);
     }
+
+    @Transactional(readOnly = true)
+    public List<Event> findByOrganizerId(UUID organizerId) {
+        return eventRepository.findByOrganizerId(organizerId);
+    }
+
 }

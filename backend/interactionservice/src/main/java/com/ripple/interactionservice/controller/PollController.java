@@ -1,62 +1,64 @@
-package com.ripple.interactionservice.controller;
 
-import java.util.List;
+package com.ripple.interactionservice.controller;
 
 import com.ripple.interactionservice.dto.CreatePollRequest;
 import com.ripple.interactionservice.dto.PollResponse;
-import com.ripple.interactionservice.entity.Poll;
 import com.ripple.interactionservice.service.PollService;
-
-import jakarta.validation.Valid;
+import com.ripple.interactionservice.service.RealtimePublisher;
 
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/polls")
 public class PollController {
 
     private final PollService pollService;
+    private final RealtimePublisher realtimePublisher;
 
-    // Constructor Dependency Injection
-    public PollController(PollService pollService) {
+    public PollController(
+            PollService pollService,
+            RealtimePublisher realtimePublisher
+    ) {
         this.pollService = pollService;
+        this.realtimePublisher = realtimePublisher;
     }
 
+    // ------------------------------------
     // 1. Create a new poll
+    // ------------------------------------
+
     @PostMapping
-    public ResponseEntity<PollResponse> createPoll(
-            @Valid @RequestBody CreatePollRequest request) {
-
-        Poll poll = pollService.createPoll(
-            request.eventId(),
-            request.question(),
-            request.options()
+    @ResponseStatus(HttpStatus.CREATED)
+    public PollResponse createPoll(
+            @RequestBody CreatePollRequest request
+    ) {
+        return PollResponse.from(
+                pollService.createPoll(
+                        request.eventId(),
+                        request.question(),
+                        request.options()
+                )
         );
-
-        return ResponseEntity
-            .status(HttpStatus.CREATED)
-            .body(PollResponse.from(poll));
     }
 
-    // 2. Start a poll (DRAFT -> LIVE)
-    @PostMapping("/{id}/start")
-    public PollResponse startPoll(@PathVariable Long id) {
+    // ------------------------------------
+    // 2. Retrieve all polls for an event
+    // DRAFT + LIVE + CLOSED
+    // ------------------------------------
 
-        Poll poll = pollService.startPoll(id);
-
-        return PollResponse.from(poll);
+    @GetMapping("/event/{eventId}")
+    public List<PollResponse> getPollsForEvent(
+            @PathVariable Long eventId
+    ) {
+        return pollService.getPollsForEvent(eventId);
     }
 
-    // 3. Close a poll (LIVE -> CLOSED)
-    @PostMapping("/{id}/close")
-    public PollResponse closePoll(@PathVariable Long id) {
-
-        Poll poll = pollService.closePoll(id);
-
-        return PollResponse.from(poll);
-    }
+    // ------------------------------------
+    // 3. Retrieve LIVE polls for Audience
+    // ------------------------------------
 
     @GetMapping("/event/{eventId}/live")
     public List<PollResponse> getLivePolls(
@@ -65,4 +67,37 @@ public class PollController {
         return pollService.getLivePollsForEvent(eventId);
     }
 
+    // ------------------------------------
+    // 4. Start a poll + WebSocket broadcast
+    // ------------------------------------
+
+    @PostMapping("/{id}/start")
+    public PollResponse startPoll(
+            @PathVariable Long id
+    ) {
+        PollResponse response = PollResponse.from(
+                pollService.startPoll(id)
+        );
+
+        realtimePublisher.pollStarted(id);
+
+        return response;
+    }
+
+    // ------------------------------------
+    // 5. Close a poll + WebSocket broadcast
+    // ------------------------------------
+
+    @PostMapping("/{id}/close")
+    public PollResponse closePoll(
+            @PathVariable Long id
+    ) {
+        PollResponse response = PollResponse.from(
+                pollService.closePoll(id)
+        );
+
+        realtimePublisher.pollClosed(id);
+
+        return response;
+    }
 }

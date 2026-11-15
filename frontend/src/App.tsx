@@ -75,7 +75,7 @@ export default function App() {
 
             <div className="mt-9 flex flex-wrap items-center gap-4">
               <a
-                href="/signup"
+                href="/dashboard"
                 className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-6 py-3 font-semibold transition hover:bg-violet-500"
               >
                 Create an Event <ArrowRight size={18} />

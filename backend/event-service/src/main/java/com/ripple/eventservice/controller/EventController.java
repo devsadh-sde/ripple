@@ -1,6 +1,9 @@
 
 package com.ripple.eventservice.controller;
 
+import java.util.List;
+import java.util.UUID;
+
 import com.ripple.eventservice.dto.CreateEventRequest;
 import com.ripple.eventservice.dto.EventResponse;
 import com.ripple.eventservice.entity.Event;
@@ -95,4 +98,15 @@ public class EventController {
             event.getCreatedAt()
         );
     }
+
+    @GetMapping("/organizer/{organizerId}")
+    public List<EventResponse> getOrganizerEvents(
+            @PathVariable UUID organizerId
+    ) {
+        return eventService.getEventsByOrganizerId(organizerId)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
 }

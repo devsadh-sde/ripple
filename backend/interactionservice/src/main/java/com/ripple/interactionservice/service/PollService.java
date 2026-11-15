@@ -108,4 +108,17 @@ public class PollService {
             .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<PollResponse> getPollsForEvent(Long eventId) {
+        if (eventId == null || eventId <= 0) {
+            throw new IllegalArgumentException("Invalid event ID");
+        }
+
+        return pollRepository.findByEventId(eventId)
+                .stream()
+                .map(PollResponse::from)
+                .toList();
+    }
+
+
 }

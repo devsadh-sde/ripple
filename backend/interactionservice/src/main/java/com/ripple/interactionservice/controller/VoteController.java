@@ -3,13 +3,10 @@ package com.ripple.interactionservice.controller;
 
 import com.ripple.interactionservice.dto.CastVoteRequest;
 import com.ripple.interactionservice.dto.VoteResponse;
-import com.ripple.interactionservice.entity.Vote;
+import com.ripple.interactionservice.service.RealtimePublisher;
 import com.ripple.interactionservice.service.VoteService;
 
-import jakarta.validation.Valid;
-
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -17,26 +14,34 @@ import org.springframework.web.bind.annotation.*;
 public class VoteController {
 
     private final VoteService voteService;
+    private final RealtimePublisher realtimePublisher;
 
-    public VoteController(VoteService voteService) {
+    public VoteController(
+            VoteService voteService,
+            RealtimePublisher realtimePublisher
+    ) {
         this.voteService = voteService;
+        this.realtimePublisher = realtimePublisher;
     }
 
-    // Submit a vote for a poll
     @PostMapping("/{pollId}/votes")
-    public ResponseEntity<VoteResponse> castVote(
+    @ResponseStatus(HttpStatus.CREATED)
+    public VoteResponse castVote(
             @PathVariable Long pollId,
-            @Valid @RequestBody CastVoteRequest request
+            @RequestBody CastVoteRequest request
     ) {
-
-        Vote vote = voteService.castVote(
-            pollId,
-            request.optionId(),
-            request.participantId()
+        VoteResponse response = VoteResponse.from(
+                voteService.castVote(
+                        pollId,
+                        request.optionId(),
+                        request.participantId()
+                )
         );
 
-        return ResponseEntity
-            .status(HttpStatus.CREATED)
-            .body(VoteResponse.from(vote));
+        // The transactional service has returned successfully.
+        // The vote is committed before we notify subscribers.
+        realtimePublisher.voteCast(pollId);
+
+        return response;
     }
 }

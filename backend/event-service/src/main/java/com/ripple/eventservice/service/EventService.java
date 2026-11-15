@@ -10,6 +10,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
 import java.util.Locale;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -182,4 +183,9 @@ public class EventService {
                         )
                 );
     }
+
+    public List<Event> getEventsByOrganizerId(UUID organizerId) {
+        return eventWriter.findByOrganizerId(organizerId);
+    }
+
 }
