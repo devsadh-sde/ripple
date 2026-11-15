@@ -8,19 +8,28 @@ export default defineConfig({
 
   server: {
     port: 5173,
+
     proxy: {
+      "/api/auth": {
+        target: "http://localhost:8081",
+        changeOrigin: true,
+      },
+
       "/api/events": {
         target: "http://localhost:8081",
         changeOrigin: true,
       },
+
       "/api/polls": {
         target: "http://localhost:8082",
         changeOrigin: true,
       },
-      "/api/auth": {
-        target: "http://localhost:8081",
+
+      "/ws": {
+        target: "http://localhost:8082",
         changeOrigin: true,
-},
+        ws: true,
+      },
     },
   },
 });
