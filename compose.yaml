@@ -1,3 +1,4 @@
+
 services:
   postgres:
     image: postgres:17
@@ -21,6 +22,17 @@ services:
       timeout: 5s
       retries: 15
 
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:8025:8025"
+
+    expose:
+      - "1025"
+
+
   event-service:
     build:
       context: ./backend/event-service
@@ -30,14 +42,25 @@ services:
 
     environment:
       SERVER_PORT: 8081
+
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ripple_events
       SPRING_DATASOURCE_USERNAME: ripple
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
 
+      # Resend SMTP configuration
+      SPRING_MAIL_HOST: smtp.resend.com
+      SPRING_MAIL_PORT: 587
+      SPRING_MAIL_USERNAME: resend
+      SPRING_MAIL_PASSWORD: ${RESEND_API_KEY:?Set RESEND_API_KEY in .env}
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
+      RIPPLE_MAIL_FROM: onboarding@resend.dev
+
     depends_on:
       postgres:
         condition: service_healthy
+        
 
   interaction-service:
     build:

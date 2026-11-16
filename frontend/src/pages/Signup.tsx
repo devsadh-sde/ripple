@@ -22,14 +22,23 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    e: FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
     if (loading) return;
+
+    if (!name.trim()) {
+      setError("Please enter your name.");
+      return;
+    }
 
     if (password.length < 12 || password.length > 72) {
       setError("Password must be between 12 and 72 characters.");
       return;
     }
+
+    const normalizedEmail = email.trim().toLowerCase();
 
     setLoading(true);
     setError("");
@@ -38,10 +47,12 @@ export default function Signup() {
       const response = await fetch("/api/auth/signup", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           name: name.trim(),
-          email: email.trim(),
+          email: normalizedEmail,
           password,
         }),
       });
@@ -49,19 +60,52 @@ export default function Signup() {
       if (!response.ok) {
         throw new Error(
           response.status === 409
-            ? "This email is already registered. Please sign in."
+            ? "This email is already registered. Please sign in or verify your account."
             : "Unable to create your account. Please try again."
         );
       }
 
-      // Signup creates the account but doesn't log the user in.
-      navigate("/login", {
+      sessionStorage.setItem(
+        "ripple:pending-verification-email",
+        normalizedEmail
+      );
+
+      // The account exists even if mail delivery fails.
+      // Let the user request another code on the next page.
+      let emailSent = false;
+
+      try {
+        const mailResponse = await fetch(
+          "/api/auth/send-verification",
+          {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email: normalizedEmail,
+            }),
+          }
+        );
+
+        emailSent = mailResponse.ok;
+      } catch {
+        emailSent = false;
+      }
+
+      navigate("/verify-email", {
         replace: true,
-        state: { registered: true },
+        state: {
+          email: normalizedEmail,
+          emailSent,
+        },
       });
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Unable to create account."
+        err instanceof Error
+          ? err.message
+          : "Unable to create account."
       );
     } finally {
       setLoading(false);
@@ -71,12 +115,16 @@ export default function Signup() {
   return (
     <div className="min-h-screen bg-[#090B16] px-5 text-white">
       <header className="mx-auto flex max-w-6xl items-center justify-between py-7">
-        <Link to="/" className="text-2xl font-bold">
+        <Link
+          to="/"
+          className="cursor-pointer text-2xl font-bold"
+        >
           ripple<span className="text-violet-400">.</span>
         </Link>
+
         <Link
           to="/login"
-          className="text-sm text-violet-300 hover:text-violet-200"
+          className="cursor-pointer text-sm text-violet-300 hover:text-violet-200"
         >
           Already have an account?
         </Link>
@@ -88,7 +136,10 @@ export default function Signup() {
             <UserPlus className="text-violet-300" size={26} />
           </div>
 
-          <h1 className="text-4xl font-bold">Create your account.</h1>
+          <h1 className="text-4xl font-bold">
+            Create your account.
+          </h1>
+
           <p className="mt-3 text-slate-400">
             Start hosting interactive experiences with Ripple.
           </p>
@@ -114,8 +165,10 @@ export default function Signup() {
             >
               Your name
             </label>
+
             <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-[#0D1020] px-4 focus-within:border-violet-400">
               <UserRound size={18} className="text-slate-500" />
+
               <input
                 id="signup-name"
                 type="text"
@@ -137,8 +190,10 @@ export default function Signup() {
             >
               Email address
             </label>
+
             <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-[#0D1020] px-4 focus-within:border-violet-400">
               <Mail size={18} className="text-slate-500" />
+
               <input
                 id="signup-email"
                 type="email"
@@ -159,8 +214,13 @@ export default function Signup() {
             >
               Password
             </label>
+
             <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-[#0D1020] px-4 focus-within:border-violet-400">
-              <LockKeyhole size={18} className="text-slate-500" />
+              <LockKeyhole
+                size={18}
+                className="text-slate-500"
+              />
+
               <input
                 id="signup-password"
                 type={visible ? "text" : "password"}
@@ -173,15 +233,23 @@ export default function Signup() {
                 placeholder="12–72 characters"
                 className="min-w-0 flex-1 bg-transparent py-4 outline-none"
               />
+
               <button
                 type="button"
-                aria-label={visible ? "Hide password" : "Show password"}
+                aria-label={
+                  visible ? "Hide password" : "Show password"
+                }
                 onClick={() => setVisible((v) => !v)}
-                className="text-slate-400 hover:text-white"
+                className="cursor-pointer text-slate-400 hover:text-white"
               >
-                {visible ? <EyeOff size={19} /> : <Eye size={19} />}
+                {visible ? (
+                  <EyeOff size={19} />
+                ) : (
+                  <Eye size={19} />
+                )}
               </button>
             </div>
+
             <p className="mt-2 text-xs text-slate-500">
               Use a unique password between 12 and 72 characters.
             </p>
@@ -190,14 +258,20 @@ export default function Signup() {
           <button
             type="submit"
             disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-4 font-semibold hover:bg-violet-500 disabled:opacity-50"
+            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-violet-600 py-4 font-semibold hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
-              <LoaderCircle size={18} className="animate-spin" />
+              <LoaderCircle
+                size={18}
+                className="animate-spin"
+              />
             ) : (
               <ArrowRight size={18} />
             )}
-            {loading ? "Creating account..." : "Create Account"}
+
+            {loading
+              ? "Creating account..."
+              : "Create Account"}
           </button>
 
           <p className="text-center text-sm text-slate-400">

@@ -65,13 +65,23 @@ public class OrganizerAuthController {
     public OrganizerResponse signup(
             @RequestBody SignupRequest request
     ) {
-        Organizer organizer = authService.signup(
-                request.name(),
-                request.email(),
-                request.password()
-        );
+        
+Organizer organizer = organizerRepository
+        .findById(organizerId)
+        .orElseThrow(this::unauthorized);
 
-        return OrganizerResponse.from(organizer);
+// Reject sessions belonging to unverified organizers.
+if (!organizer.isEmailVerified()) {
+    session.invalidate();
+
+    throw new ResponseStatusException(
+            HttpStatus.FORBIDDEN,
+            "EMAIL_NOT_VERIFIED"
+    );
+}
+
+return OrganizerResponse.from(organizer);
+
     }
 
     // Verify credentials and create a server session.

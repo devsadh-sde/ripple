@@ -16,6 +16,7 @@ import java.util.Locale;
 public class OrganizerAuthService {
 
     private final OrganizerRepository repository;
+
     private final BCryptPasswordEncoder encoder =
             new BCryptPasswordEncoder(12);
 
@@ -28,6 +29,7 @@ public class OrganizerAuthService {
             String email,
             String password
     ) {
+
         if (name == null || name.isBlank()
                 || name.trim().length() > 100) {
             throw new ResponseStatusException(
@@ -65,12 +67,14 @@ public class OrganizerAuthService {
     }
 
     public Organizer login(String email, String password) {
+
         String normalizedEmail = normalizeEmail(email);
 
         Organizer organizer = repository
                 .findByEmailIgnoreCase(normalizedEmail)
                 .orElseThrow(this::invalidCredentials);
 
+        // Step 1: Validate the password.
         if (password == null ||
                 !encoder.matches(
                         password,
@@ -79,10 +83,20 @@ public class OrganizerAuthService {
             throw invalidCredentials();
         }
 
+        // Step 2: Require email verification before login.
+        if (!organizer.isEmailVerified()) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "EMAIL_NOT_VERIFIED"
+            );
+        }
+
+        // Step 3: Allow the verified organizer to log in.
         return organizer;
     }
 
     private String normalizeEmail(String email) {
+
         if (email == null || email.isBlank()
                 || email.length() > 255
                 || !email.contains("@")) {
@@ -94,6 +108,7 @@ public class OrganizerAuthService {
     }
 
     private ResponseStatusException invalidCredentials() {
+
         return new ResponseStatusException(
                 HttpStatus.UNAUTHORIZED,
                 "Invalid email or password"

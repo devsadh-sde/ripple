@@ -1,6 +1,10 @@
 
 import { useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import {
   ArrowRight,
   Eye,
@@ -16,12 +20,20 @@ type Organizer = {
   email: string;
 };
 
+type LoginNavigationState = {
+  registered?: boolean;
+  verified?: boolean;
+};
+
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const registered =
-    (location.state as { registered?: boolean } | null)?.registered === true;
+  const navigationState =
+    (location.state as LoginNavigationState | null) ?? {};
+
+  const registered = navigationState.registered === true;
+  const verified = navigationState.verified === true;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,8 +41,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    e: FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
+
     if (loading) return;
 
     setLoading(true);
@@ -40,7 +55,9 @@ export default function Login() {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           email: email.trim(),
           password,
@@ -48,10 +65,18 @@ export default function Login() {
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Incorrect email or password.");
+        }
+
+        if (response.status === 403) {
+          throw new Error(
+            "Your email may not be verified yet. Please verify your email before signing in."
+          );
+        }
+
         throw new Error(
-          response.status === 401
-            ? "Incorrect email or password."
-            : "Unable to sign in. Please try again."
+          "Unable to sign in. Please try again."
         );
       }
 
@@ -61,22 +86,34 @@ export default function Login() {
         throw new Error("Invalid server response.");
       }
 
+      // Clear previous session data.
       localStorage.removeItem("ripple:demo-organizer-id");
-      sessionStorage.removeItem("ripple:presenter:event");
 
+      sessionStorage.removeItem(
+        "ripple:presenter:event"
+      );
+
+      // Save current organizer details.
       sessionStorage.setItem(
         "ripple:organizer",
         JSON.stringify(organizer)
       );
+
       sessionStorage.setItem(
         "ripple:demo-organizer-id",
         organizer.id
       );
 
-      navigate("/dashboard", { replace: true });
+      // Open the protected presenter dashboard.
+      navigate("/dashboard", {
+        replace: true,
+      });
+
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Unable to sign in."
+        err instanceof Error
+          ? err.message
+          : "Unable to sign in."
       );
     } finally {
       setLoading(false);
@@ -85,34 +122,62 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-[#090B16] px-5 text-white">
+      {/* Header */}
       <header className="mx-auto flex max-w-6xl items-center justify-between py-7">
-        <Link to="/" className="text-2xl font-bold">
-          ripple<span className="text-violet-400">.</span>
+        <Link
+          to="/"
+          className="cursor-pointer text-2xl font-bold"
+        >
+          ripple
+          <span className="text-violet-400">.</span>
         </Link>
+
         <Link
           to="/signup"
-          className="text-sm text-violet-300 hover:text-violet-200"
+          className="cursor-pointer text-sm text-violet-300 hover:text-violet-200"
         >
           Create an account
         </Link>
       </header>
 
       <main className="mx-auto flex max-w-md flex-col justify-center py-16">
+
+        {/* Page heading */}
         <div className="mb-8 text-center">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-500/15">
-            <LockKeyhole className="text-violet-300" size={26} />
+            <LockKeyhole
+              className="text-violet-300"
+              size={26}
+            />
           </div>
-          <h1 className="text-4xl font-bold">Welcome back.</h1>
+
+          <h1 className="text-4xl font-bold">
+            Welcome back.
+          </h1>
+
           <p className="mt-3 text-slate-400">
             Sign in to manage your Ripple events.
           </p>
         </div>
 
+        {/* Login form */}
         <form
           onSubmit={handleSubmit}
           className="space-y-5 rounded-3xl border border-white/10 bg-[#15182A] p-8"
         >
-          {registered && !error && (
+
+          {/* Email verification success */}
+          {verified && !error && (
+            <p
+              role="status"
+              className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300"
+            >
+              Email verified successfully! Sign in to continue.
+            </p>
+          )}
+
+          {/* Legacy signup confirmation */}
+          {registered && !verified && !error && (
             <p
               role="status"
               className="rounded-xl bg-emerald-500/10 p-3 text-sm text-emerald-300"
@@ -121,15 +186,30 @@ export default function Login() {
             </p>
           )}
 
+          {/* Error message */}
           {error && (
             <p
               role="alert"
               className="rounded-xl bg-red-500/10 p-3 text-sm text-red-300"
             >
               {error}
+
+              {error.toLowerCase().includes("verif") && (
+                <>
+                  {" "}
+                  <Link
+                    to="/verify-email"
+                    state={{ email: email.trim() }}
+                    className="font-semibold underline hover:text-red-200"
+                  >
+                    Verify Email
+                  </Link>
+                </>
+              )}
             </p>
           )}
 
+          {/* Email */}
           <div>
             <label
               htmlFor="login-email"
@@ -137,8 +217,13 @@ export default function Login() {
             >
               Email address
             </label>
+
             <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-[#0D1020] px-4 focus-within:border-violet-400">
-              <Mail size={18} className="text-slate-500" />
+              <Mail
+                size={18}
+                className="text-slate-500"
+              />
+
               <input
                 id="login-email"
                 type="email"
@@ -152,6 +237,7 @@ export default function Login() {
             </div>
           </div>
 
+          {/* Password */}
           <div>
             <label
               htmlFor="login-password"
@@ -159,8 +245,13 @@ export default function Login() {
             >
               Password
             </label>
+
             <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-[#0D1020] px-4 focus-within:border-violet-400">
-              <LockKeyhole size={18} className="text-slate-500" />
+              <LockKeyhole
+                size={18}
+                className="text-slate-500"
+              />
+
               <input
                 id="login-password"
                 type={visible ? "text" : "password"}
@@ -171,30 +262,45 @@ export default function Login() {
                 placeholder="Enter your password"
                 className="min-w-0 flex-1 bg-transparent py-4 outline-none"
               />
+
               <button
                 type="button"
-                aria-label={visible ? "Hide password" : "Show password"}
+                aria-label={
+                  visible
+                    ? "Hide password"
+                    : "Show password"
+                }
                 onClick={() => setVisible((v) => !v)}
-                className="text-slate-400 hover:text-white"
+                className="cursor-pointer text-slate-400 hover:text-white"
               >
-                {visible ? <EyeOff size={19} /> : <Eye size={19} />}
+                {visible ? (
+                  <EyeOff size={19} />
+                ) : (
+                  <Eye size={19} />
+                )}
               </button>
             </div>
           </div>
 
+          {/* Sign in button */}
           <button
             type="submit"
             disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-4 font-semibold hover:bg-violet-500 disabled:opacity-50"
+            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-violet-600 py-4 font-semibold hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
-              <LoaderCircle size={18} className="animate-spin" />
+              <LoaderCircle
+                size={18}
+                className="animate-spin"
+              />
             ) : (
               <ArrowRight size={18} />
             )}
+
             {loading ? "Signing in..." : "Sign In"}
           </button>
 
+          {/* Signup link */}
           <p className="text-center text-sm text-slate-400">
             New to Ripple?{" "}
             <Link
@@ -202,6 +308,17 @@ export default function Login() {
               className="font-medium text-violet-300 hover:underline"
             >
               Create an account
+            </Link>
+          </p>
+
+          <p className="text-center text-sm text-slate-400">
+            Haven't verified your email?{" "}
+            <Link
+              to="/verify-email"
+              state={{ email: email.trim() }}
+              className="font-medium text-violet-300 hover:underline"
+            >
+              Verify Email
             </Link>
           </p>
         </form>

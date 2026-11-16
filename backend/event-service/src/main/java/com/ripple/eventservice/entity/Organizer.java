@@ -21,6 +21,9 @@ public class Organizer {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified = false;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -35,6 +38,7 @@ public class Organizer {
         this.name = name;
         this.email = email;
         this.passwordHash = passwordHash;
+        this.emailVerified = false;
         this.createdAt = Instant.now();
     }
 
@@ -52,5 +56,13 @@ public class Organizer {
 
     public String getPasswordHash() {
         return passwordHash;
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerified;
+    }
+
+    public void verifyEmail() {
+        this.emailVerified = true;
     }
 }
