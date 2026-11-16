@@ -1,0 +1,194 @@
+
+# Ripple — Real-Time Audience Engagement Platform
+
+Ripple is a full-stack, microservices-based audience engagement
+platform built with Java, Spring Boot, React, TypeScript, and PostgreSQL.
+
+It allows organizers to host interactive events, launch live polls,
+collect audience votes, and visualize results in real time.
+
+## Features
+
+### Organizer
+- Account registration and login
+- BCrypt password hashing
+- Server-side session authentication
+- Event creation and management
+- Unique six-character event join codes
+- Event lifecycle: DRAFT → LIVE → ENDED
+- Create, start, and close polls
+- Live voting results and analytics
+- QR-code-based event sharing
+- Session-based event ownership authorization
+
+### Audience
+- Join events using an event code or QR link
+- Participate without an organizer account
+- Vote on live polls
+- View poll results
+- Receive live poll updates
+
+## Technology Stack
+
+| Layer | Technologies |
+|---|---|
+| Backend | Java 21, Spring Boot, REST APIs |
+| Frontend | React, TypeScript, Vite, Tailwind CSS |
+| Database | PostgreSQL |
+| Persistence | Spring Data JPA, Hibernate |
+| Database Migration | Flyway |
+| Real-Time Communication | WebSocket, STOMP |
+| Authentication | BCrypt, HTTP Sessions |
+| DevOps | Docker, Docker Compose, Maven |
+| Testing | Maven, Spring Boot Tests |
+
+## Architecture
+
+Ripple consists of two backend microservices:
+
+### Event Service (Port 8081)
+
+Responsible for:
+- Organizer registration and login
+- Session authentication
+- Event creation and lifecycle
+- Event ownership authorization
+- CSRF token management
+
+### Interaction Service (Port 8082)
+
+Responsible for:
+- Poll creation and lifecycle
+- Audience voting
+- Vote aggregation
+- Poll results
+- WebSocket event broadcasting
+
+Interaction Service communicates with Event Service
+to verify event ownership before organizer operations.
+
+Each microservice uses its own PostgreSQL database.
+
+## Project Structure
+
+ripple/
+├── backend/
+│   ├── event-service/
+│   └── interactionservice/
+├── frontend/
+├── docker/
+├── docs/
+├── infrastructure/
+├── compose.yaml
+├── .env.example
+└── README.md
+
+## Running Locally with Docker
+
+### Prerequisites
+
+- Docker Desktop
+- Node.js and npm
+- Git
+
+### 1. Clone the repository
+
+git clone <https://github.com/devsadh-sde/ripple>
+cd ripple
+
+### 2. Configure the environment
+
+Copy `.env.example` to `.env` and set a
+local development PostgreSQL password.
+
+### 3. Start backend services
+
+docker compose up -d --build
+
+This starts:
+- PostgreSQL
+- Event Service on localhost:8081
+- Interaction Service on localhost:8082
+
+### 4. Start the frontend
+
+cd frontend
+npm install
+npm run dev
+
+Open:
+
+http://localhost:5173
+
+## Example Workflow
+
+1. Register an organizer account.
+2. Log in and open the Presenter Dashboard.
+3. Create an event.
+4. Start the event.
+5. Share its six-character join code.
+6. Create and launch a poll.
+7. Audience members join and submit votes.
+8. View results as votes are recorded.
+9. Close the poll.
+10. End the event.
+
+## API Examples
+
+Event Service:
+
+POST /api/auth/signup
+POST /api/auth/login
+GET  /api/auth/me
+GET  /api/auth/csrf
+POST /api/auth/logout
+
+POST /api/events
+GET  /api/events/{id}
+GET  /api/events/code/{joinCode}
+GET  /api/events/organizer/{organizerId}
+POST /api/events/{id}/start
+POST /api/events/{id}/end
+
+Interaction Service:
+
+POST /api/polls
+GET  /api/polls/event/{eventId}
+GET  /api/polls/event/{eventId}/live
+POST /api/polls/{id}/start
+POST /api/polls/{id}/close
+POST /api/polls/{id}/votes
+GET  /api/polls/{id}/results
+
+## Security
+
+Ripple implements:
+- BCrypt password hashing
+- Server-managed organizer sessions
+- Session-based event ownership verification
+- Authorization checks for poll management
+- CSRF token validation for organizer operations
+
+Security integration is intended for local development
+and portfolio demonstration.
+
+Production deployment requires additional hardening,
+including HTTPS, secure service-to-service authentication,
+session management, and security review.
+
+## Future Improvements
+
+- Redis for caching and session storage
+- Kafka for asynchronous event processing
+- Kubernetes deployment
+- AWS hosting
+- Distributed tracing and monitoring
+- Expanded automated testing
+
+## Project Status
+
+Local MVP development and integration testing.
+
+## License
+
+See the repository license, if provided.

@@ -1,4 +1,4 @@
-
+import { csrfFetch } from "../api/csrfFetch";
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { LoaderCircle, LogOut, ShieldCheck } from "lucide-react";
@@ -97,7 +97,7 @@ export default function ProtectedDashboard() {
     setLogoutError("");
 
     try {
-      const response = await fetch("/api/auth/logout", {
+      const response = await csrfFetch("/api/auth/logout", {
         method: "POST",
         credentials: "same-origin",
       });

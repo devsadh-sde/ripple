@@ -19,6 +19,11 @@ import {
   Square,
   RefreshCw,
 } from "lucide-react";
+import { csrfFetch } from "../api/csrfFetch";
+
+// ==========================
+// Types
+// ==========================
 
 type EventDetails = {
   id: number;
@@ -58,49 +63,57 @@ type PollResults = {
 type RawResults = {
   pollId: number;
   totalVotes: number;
-  options?: OptionResult[];
   results?: OptionResult[];
+  options?: OptionResult[];
   optionResults?: OptionResult[];
 };
 
-const EVENT_STORAGE_KEY = "ripple:presenter:event";
+const EVENT_KEY = "ripple:presenter:event";
+
+const panel =
+  "rounded-3xl border border-white/10 bg-[#15182A] p-6";
+
+const input =
+  "w-full rounded-xl border border-white/10 bg-[#0D1020] p-3 text-white outline-none focus:border-violet-400";
+
+const button =
+  "cursor-pointer rounded-xl bg-violet-600 px-5 py-3 font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50";
+
+// ==========================
+// Helpers
+// ==========================
 
 function getOrganizerId(): string {
-  const raw = sessionStorage.getItem("ripple:organizer");
+  const saved = sessionStorage.getItem("ripple:organizer");
 
-  if (!raw) {
-    throw new Error("Please sign in to manage your events.");
+  if (!saved) {
+    throw new Error("Please sign in again.");
   }
 
-  const organizer = JSON.parse(raw) as { id?: string };
+  const organizer = JSON.parse(saved) as { id?: string };
 
   if (!organizer.id) {
-    throw new Error("Please sign in to manage your events.");
+    throw new Error("Please sign in again.");
   }
 
   return organizer.id;
 }
 
 function getSavedEvent(): EventDetails | null {
-  const saved = sessionStorage.getItem(EVENT_STORAGE_KEY);
-
-  if (!saved) return null;
-
   try {
-    const data = JSON.parse(saved) as EventDetails;
+    const saved = sessionStorage.getItem(EVENT_KEY);
+    if (!saved) return null;
 
-    if (
-      data.id &&
-      data.joinCode &&
-      data.organizerId === getOrganizerId()
-    ) {
-      return data;
+    const event = JSON.parse(saved) as EventDetails;
+
+    if (event.organizerId === getOrganizerId()) {
+      return event;
     }
   } catch {
-    // Ignore invalid saved data.
+    // Ignore invalid session data.
   }
 
-  sessionStorage.removeItem(EVENT_STORAGE_KEY);
+  sessionStorage.removeItem(EVENT_KEY);
   return null;
 }
 
@@ -108,17 +121,47 @@ async function readError(
   response: Response,
   fallback: string
 ): Promise<Error> {
-  try {
-    const body = (await response.json()) as {
-      message?: string;
-      detail?: string;
-    };
+  let detail = "";
 
-    return new Error(body.message || body.detail || fallback);
+  try {
+    const body = await response.json();
+
+    detail =
+      typeof body.message === "string"
+        ? body.message
+        : typeof body.detail === "string"
+          ? body.detail
+          : "";
   } catch {
-    return new Error(fallback);
+    // Ignore missing JSON response body.
   }
+
+  if (response.status === 401) {
+    return new Error(
+      "Your session has expired. Please log in again."
+    );
+  }
+
+  if (response.status === 403) {
+    return new Error(
+      "Access denied. Check your login session and security token."
+    );
+  }
+
+  if (response.status === 409) {
+    return new Error(
+      detail || "This action is not allowed in the current state."
+    );
+  }
+
+  return new Error(
+    detail || `${fallback} (HTTP ${response.status})`
+  );
 }
+
+// ==========================
+// Presenter Dashboard
+// ==========================
 
 export default function PresenterDashboard() {
   const [event, setEvent] = useState<EventDetails | null>(
@@ -147,10 +190,7 @@ export default function PresenterDashboard() {
 
   function saveEvent(data: EventDetails) {
     setEvent(data);
-    sessionStorage.setItem(
-      EVENT_STORAGE_KEY,
-      JSON.stringify(data)
-    );
+    sessionStorage.setItem(EVENT_KEY, JSON.stringify(data));
   }
 
   function selectEvent(data: EventDetails) {
@@ -162,7 +202,7 @@ export default function PresenterDashboard() {
   }
 
   function clearSelectedEvent() {
-    sessionStorage.removeItem(EVENT_STORAGE_KEY);
+    sessionStorage.removeItem(EVENT_KEY);
     setEvent(null);
     setPolls([]);
     setResults({});
@@ -170,13 +210,20 @@ export default function PresenterDashboard() {
     setMessage("");
   }
 
+  // ==========================
+  // Load organizer events
+  // ==========================
+
   const loadMyEvents = useCallback(async () => {
     try {
       const organizerId = getOrganizerId();
 
       const response = await fetch(
         `/api/events/organizer/${organizerId}`,
-        { credentials: "same-origin" }
+        {
+          credentials: "same-origin",
+          cache: "no-store",
+        }
       );
 
       if (!response.ok) {
@@ -192,23 +239,31 @@ export default function PresenterDashboard() {
       setError(
         err instanceof Error
           ? err.message
-          : "Unable to load event history."
+          : "Unable to load your events."
       );
     }
   }, []);
+
+  // ==========================
+  // Refresh event and polls
+  // ==========================
 
   const refreshDashboard = useCallback(
     async (eventId: number, signal?: AbortSignal) => {
       try {
         const eventResponse = await fetch(
           `/api/events/${eventId}`,
-          { signal, credentials: "same-origin" }
+          {
+            signal,
+            credentials: "same-origin",
+            cache: "no-store",
+          }
         );
 
         if (!eventResponse.ok) {
           throw await readError(
             eventResponse,
-            "Unable to retrieve event."
+            "Unable to load event."
           );
         }
 
@@ -216,44 +271,55 @@ export default function PresenterDashboard() {
           await eventResponse.json();
 
         if (updatedEvent.organizerId !== getOrganizerId()) {
-          throw new Error("This event belongs to another organizer.");
+          throw new Error(
+            "This event belongs to another organizer."
+          );
         }
 
         const pollResponse = await fetch(
           `/api/polls/event/${eventId}`,
-          { signal, credentials: "same-origin" }
+          {
+            signal,
+            credentials: "same-origin",
+            cache: "no-store",
+          }
         );
 
         if (!pollResponse.ok) {
           throw await readError(
             pollResponse,
-            "Unable to retrieve polls."
+            "Unable to load polls."
           );
         }
 
-        const savedPolls: Poll[] = await pollResponse.json();
+        const updatedPolls: Poll[] =
+          await pollResponse.json();
 
-        const resultEntries = await Promise.all(
-          savedPolls.map(async (poll) => {
+        const entries = await Promise.all(
+          updatedPolls.map(async (poll) => {
             try {
               const response = await fetch(
                 `/api/polls/${poll.id}/results`,
-                { signal, credentials: "same-origin" }
+                {
+                  signal,
+                  credentials: "same-origin",
+                  cache: "no-store",
+                }
               );
 
               if (!response.ok) return null;
 
-              const data: RawResults = await response.json();
+              const raw: RawResults = await response.json();
 
               return [
                 poll.id,
                 {
-                  pollId: data.pollId,
-                  totalVotes: data.totalVotes,
+                  pollId: raw.pollId,
+                  totalVotes: raw.totalVotes,
                   options:
-                    data.options ??
-                    data.results ??
-                    data.optionResults ??
+                    raw.results ??
+                    raw.options ??
+                    raw.optionResults ??
                     [],
                 },
               ] as const;
@@ -267,14 +333,15 @@ export default function PresenterDashboard() {
 
         setEvent(updatedEvent);
         sessionStorage.setItem(
-          EVENT_STORAGE_KEY,
+          EVENT_KEY,
           JSON.stringify(updatedEvent)
         );
-        setPolls(savedPolls);
+
+        setPolls(updatedPolls);
 
         setResults(
           Object.fromEntries(
-            resultEntries.filter(
+            entries.filter(
               (entry): entry is NonNullable<typeof entry> =>
                 entry !== null
             )
@@ -297,6 +364,7 @@ export default function PresenterDashboard() {
     void loadMyEvents();
   }, [loadMyEvents]);
 
+  // Refresh selected event every 5 seconds.
   useEffect(() => {
     if (!event) return;
 
@@ -315,10 +383,15 @@ export default function PresenterDashboard() {
     };
   }, [event?.id, refreshDashboard]);
 
+  // ==========================
+  // WebSocket updates
+  // ==========================
+
   useEffect(() => {
     if (!event) return;
 
     const eventId = event.id;
+
     const protocol =
       window.location.protocol === "https:" ? "wss" : "ws";
 
@@ -329,15 +402,15 @@ export default function PresenterDashboard() {
       onConnect: () => {
         client.subscribe(
           `/topic/events/${eventId}`,
-          (message) => {
+          (incoming) => {
             try {
-              const update = JSON.parse(message.body) as {
+              const update = JSON.parse(incoming.body) as {
                 type?: string;
                 eventId?: number;
               };
 
               if (
-                update.eventId === eventId &&
+                Number(update.eventId) === eventId &&
                 [
                   "VOTE_CAST",
                   "POLL_STARTED",
@@ -347,14 +420,17 @@ export default function PresenterDashboard() {
                 void refreshDashboard(eventId);
               }
             } catch (err) {
-              console.error("Invalid WebSocket message:", err);
+              console.error(
+                "WebSocket message error:",
+                err
+              );
             }
           }
         );
       },
 
       onStompError: (frame) => {
-        console.error("WebSocket error:", frame);
+        console.error("STOMP error:", frame);
       },
     });
 
@@ -365,52 +441,12 @@ export default function PresenterDashboard() {
     };
   }, [event?.id, refreshDashboard]);
 
-  async function openEventByCode(
-    e: FormEvent<HTMLFormElement>
-  ) {
-    e.preventDefault();
-
-    const code = lookupCode.trim().toUpperCase();
-
-    if (!/^[A-Z0-9]{6}$/.test(code)) {
-      setError("Enter a valid six-character event code.");
-      return;
-    }
-
-    setError("");
-
-    try {
-      const response = await fetch(
-        `/api/events/code/${code}`
-      );
-
-      if (!response.ok) {
-        throw await readError(
-          response,
-          "Event not found."
-        );
-      }
-
-      const data: EventDetails = await response.json();
-
-      if (data.organizerId !== getOrganizerId()) {
-        throw new Error(
-          "This event belongs to another organizer."
-        );
-      }
-
-      selectEvent(data);
-      setLookupCode("");
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Unable to find event."
-      );
-    }
-  }
+  // ==========================
+  // Create event
+  // ==========================
 
   async function createEvent(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-
     if (!eventTitle.trim()) return;
 
     setBusy(true);
@@ -418,9 +454,8 @@ export default function PresenterDashboard() {
     setMessage("");
 
     try {
-      const response = await fetch("/api/events", {
+      const response = await csrfFetch("/api/events", {
         method: "POST",
-        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
         },
@@ -457,6 +492,60 @@ export default function PresenterDashboard() {
     }
   }
 
+  // ==========================
+  // Open existing event
+  // ==========================
+
+  async function openEventByCode(
+    e: FormEvent<HTMLFormElement>
+  ) {
+    e.preventDefault();
+
+    const code = lookupCode.trim().toUpperCase();
+
+    if (!/^[A-Z0-9]{6}$/.test(code)) {
+      setError("Enter a valid six-character event code.");
+      return;
+    }
+
+    setError("");
+
+    try {
+      const response = await fetch(
+        `/api/events/code/${code}`,
+        { credentials: "same-origin" }
+      );
+
+      if (!response.ok) {
+        throw await readError(
+          response,
+          "Event not found."
+        );
+      }
+
+      const data: EventDetails = await response.json();
+
+      if (data.organizerId !== getOrganizerId()) {
+        throw new Error(
+          "This event belongs to another organizer."
+        );
+      }
+
+      selectEvent(data);
+      setLookupCode("");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to open event."
+      );
+    }
+  }
+
+  // ==========================
+  // Start / end event
+  // ==========================
+
   async function changeEventStatus(
     action: "start" | "end"
   ) {
@@ -476,11 +565,10 @@ export default function PresenterDashboard() {
     setMessage("");
 
     try {
-      const response = await fetch(
+      const response = await csrfFetch(
         `/api/events/${event.id}/${action}`,
         {
           method: "POST",
-          credentials: "same-origin",
         }
       );
 
@@ -494,6 +582,7 @@ export default function PresenterDashboard() {
       const data: EventDetails = await response.json();
 
       saveEvent(data);
+
       setMessage(
         action === "start"
           ? "Your event is now LIVE!"
@@ -511,6 +600,10 @@ export default function PresenterDashboard() {
       setBusy(false);
     }
   }
+
+  // ==========================
+  // Create poll
+  // ==========================
 
   async function createPoll(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -535,9 +628,8 @@ export default function PresenterDashboard() {
     setMessage("");
 
     try {
-      const response = await fetch("/api/polls", {
+      const response = await csrfFetch("/api/polls", {
         method: "POST",
-        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
         },
@@ -571,6 +663,10 @@ export default function PresenterDashboard() {
     }
   }
 
+  // ==========================
+  // Start / close poll
+  // ==========================
+
   async function updatePollStatus(
     pollId: number,
     action: "start" | "close"
@@ -582,11 +678,10 @@ export default function PresenterDashboard() {
     setMessage("");
 
     try {
-      const response = await fetch(
+      const response = await csrfFetch(
         `/api/polls/${pollId}/${action}`,
         {
           method: "POST",
-          credentials: "same-origin",
         }
       );
 
@@ -615,6 +710,10 @@ export default function PresenterDashboard() {
     }
   }
 
+  // ==========================
+  // Refresh and copy code
+  // ==========================
+
   async function manualRefresh() {
     if (!event) return;
 
@@ -629,6 +728,18 @@ export default function PresenterDashboard() {
     }
   }
 
+  async function copyJoinCode() {
+    if (!event) return;
+
+    try {
+      await navigator.clipboard.writeText(event.joinCode);
+      setError("");
+      setMessage("Join code copied!");
+    } catch {
+      setError("Unable to copy the join code.");
+    }
+  }
+
   const joinUrl = event
     ? `${window.location.origin}/join/${encodeURIComponent(
         event.joinCode
@@ -640,22 +751,19 @@ export default function PresenterDashboard() {
     0
   );
 
-  const panel =
-    "rounded-3xl border border-white/10 bg-[#15182A] p-6";
-
-  const input =
-    "w-full rounded-xl border border-white/10 bg-[#0D1020] p-3 text-white outline-none focus:border-violet-400";
-
-  const button =
-    "rounded-xl bg-violet-600 px-5 py-3 font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50";
+  // ==========================
+  // UI
+  // ==========================
 
   return (
     <div className="min-h-screen bg-[#090B16] text-white">
       <header className="border-b border-white/10">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-          <Link to="/" className="text-2xl font-bold">
-            ripple
-            <span className="text-violet-400">.</span>
+          <Link
+            to="/"
+            className="cursor-pointer text-2xl font-bold"
+          >
+            ripple<span className="text-violet-400">.</span>
           </Link>
 
           <span className="rounded-full bg-violet-500/15 px-4 py-2 text-sm text-violet-300">
@@ -690,9 +798,11 @@ export default function PresenterDashboard() {
               <p className="mb-2 text-sm uppercase tracking-widest text-violet-400">
                 Welcome, Presenter
               </p>
+
               <h1 className="text-4xl font-bold">
                 Create your next event.
               </h1>
+
               <p className="mt-3 text-slate-400">
                 Bring your audience together with interactive polls.
               </p>
@@ -715,6 +825,7 @@ export default function PresenterDashboard() {
                     >
                       Event title
                     </label>
+
                     <input
                       id="event-title"
                       required
@@ -735,14 +846,15 @@ export default function PresenterDashboard() {
                     >
                       Description
                     </label>
+
                     <textarea
                       id="event-description"
+                      rows={3}
                       value={description}
                       onChange={(e) =>
                         setDescription(e.target.value)
                       }
                       placeholder="What is this event about?"
-                      rows={3}
                       className={input}
                     />
                   </div>
@@ -774,16 +886,18 @@ export default function PresenterDashboard() {
                         key={item.id}
                         type="button"
                         onClick={() => selectEvent(item)}
-                        className="w-full rounded-xl border border-white/10 bg-[#0D1020] p-4 text-left hover:border-violet-400"
+                        className="w-full cursor-pointer rounded-xl border border-white/10 bg-[#0D1020] p-4 text-left hover:border-violet-400"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <span className="font-medium">
                             {item.title}
                           </span>
+
                           <span className="text-xs text-violet-300">
                             {item.status}
                           </span>
                         </div>
+
                         <p className="mt-2 text-xs text-slate-400">
                           Join code: {item.joinCode}
                         </p>
@@ -795,7 +909,7 @@ export default function PresenterDashboard() {
                 <button
                   type="button"
                   onClick={() => void loadMyEvents()}
-                  className="mt-5 text-sm text-violet-300 hover:underline"
+                  className="mt-5 cursor-pointer text-sm text-violet-300 hover:underline"
                 >
                   <RefreshCw size={15} className="mr-2 inline" />
                   Refresh event history
@@ -822,6 +936,7 @@ export default function PresenterDashboard() {
                   aria-label="Event code"
                   className={`${input} max-w-xs`}
                 />
+
                 <button type="submit" className={button}>
                   Open Event
                 </button>
@@ -834,7 +949,7 @@ export default function PresenterDashboard() {
               <button
                 type="button"
                 onClick={clearSelectedEvent}
-                className="flex items-center gap-2 text-sm text-slate-300 hover:text-white"
+                className="flex cursor-pointer items-center gap-2 text-sm text-slate-300 hover:text-white"
               >
                 <ArrowLeft size={18} />
                 All Events
@@ -844,7 +959,7 @@ export default function PresenterDashboard() {
                 type="button"
                 onClick={() => void manualRefresh()}
                 disabled={refreshing}
-                className="flex items-center gap-2 text-sm text-violet-300 disabled:opacity-50"
+                className="flex cursor-pointer items-center gap-2 text-sm text-violet-300 disabled:opacity-50"
               >
                 <RefreshCw
                   size={17}
@@ -854,15 +969,18 @@ export default function PresenterDashboard() {
               </button>
             </div>
 
+            {/* Event information */}
             <section className={panel}>
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <span className="text-xs uppercase tracking-widest text-violet-400">
-                    Event #{event.id}
-                  </span>
+                  <p className="text-xs uppercase tracking-widest text-violet-400">
+                    Your event
+                  </p>
+
                   <h1 className="mt-2 text-3xl font-bold">
                     {event.title}
                   </h1>
+
                   {event.description && (
                     <p className="mt-3 text-slate-400">
                       {event.description}
@@ -879,8 +997,10 @@ export default function PresenterDashboard() {
                 {event.status === "DRAFT" && (
                   <button
                     type="button"
-                    onClick={() => void changeEventStatus("start")}
                     disabled={busy}
+                    onClick={() =>
+                      void changeEventStatus("start")
+                    }
                     className={button}
                   >
                     <Play size={17} className="mr-2 inline" />
@@ -891,9 +1011,11 @@ export default function PresenterDashboard() {
                 {event.status === "LIVE" && (
                   <button
                     type="button"
-                    onClick={() => void changeEventStatus("end")}
                     disabled={busy}
-                    className="rounded-xl bg-red-600 px-5 py-3 font-semibold hover:bg-red-500 disabled:opacity-50"
+                    onClick={() =>
+                      void changeEventStatus("end")
+                    }
+                    className="cursor-pointer rounded-xl bg-red-600 px-5 py-3 font-semibold hover:bg-red-500 disabled:opacity-50"
                   >
                     <Square size={17} className="mr-2 inline" />
                     End Event
@@ -903,9 +1025,10 @@ export default function PresenterDashboard() {
             </section>
 
             <div className="grid gap-6 lg:grid-cols-3">
+              {/* Audience sharing */}
               <section className={`${panel} lg:col-span-1`}>
                 <h2 className="mb-4 text-xl font-semibold">
-                  Audience Access
+                  Invite Your Audience
                 </h2>
 
                 <div className="rounded-xl bg-white p-4">
@@ -919,34 +1042,34 @@ export default function PresenterDashboard() {
                 <p className="mt-5 text-sm text-slate-400">
                   Join code
                 </p>
+
                 <p className="mt-1 text-3xl font-bold tracking-widest text-violet-300">
                   {event.joinCode}
                 </p>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    void navigator.clipboard
-                      .writeText(joinUrl)
-                      .then(() => setMessage("Join link copied!"))
-                      .catch(() => setError("Unable to copy link."));
-                  }}
-                  className="mt-4 flex items-center gap-2 text-sm text-violet-300"
-                >
-                  <Copy size={16} />
-                  Copy audience link
-                </button>
+                {/* Only one copy button and one link */}
+                <div className="mt-5 flex flex-col items-start gap-4">
+                  <button
+                    type="button"
+                    onClick={() => void copyJoinCode()}
+                    className="flex cursor-pointer items-center gap-2 text-sm font-medium text-violet-300 hover:text-violet-200"
+                  >
+                    <Copy size={17} />
+                    Copy Join Code
+                  </button>
 
-                <a
-                  href={joinUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 block break-all text-xs text-slate-400 underline"
-                >
-                  {joinUrl}
-                </a>
+                  <a
+                    href={joinUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block cursor-pointer text-sm font-medium text-violet-300 underline underline-offset-4 hover:text-violet-200"
+                  >
+                    Click here to join event
+                  </a>
+                </div>
               </section>
 
+              {/* Event overview */}
               <section className={`${panel} lg:col-span-2`}>
                 <h2 className="mb-5 text-xl font-semibold">
                   Event Overview
@@ -964,9 +1087,11 @@ export default function PresenterDashboard() {
 
                   <div className="rounded-xl bg-[#0D1020] p-4">
                     <p className="text-2xl font-bold">
-                      {polls.filter(
-                        (poll) => poll.status === "LIVE"
-                      ).length}
+                      {
+                        polls.filter(
+                          (poll) => poll.status === "LIVE"
+                        ).length
+                      }
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
                       Live Polls
@@ -984,12 +1109,16 @@ export default function PresenterDashboard() {
                 </div>
 
                 <div className="mt-6 flex items-center gap-3 text-sm text-slate-400">
-                  <Radio size={18} className="text-violet-400" />
-                  Live updates via WebSocket with an HTTP refresh fallback.
+                  <Radio
+                    size={18}
+                    className="text-violet-400"
+                  />
+                  Live results update automatically.
                 </div>
               </section>
             </div>
 
+            {/* Create poll */}
             {event.status !== "ENDED" && (
               <section className={panel}>
                 <h2 className="mb-5 text-xl font-semibold">
@@ -1007,6 +1136,7 @@ export default function PresenterDashboard() {
                     >
                       Question
                     </label>
+
                     <input
                       id="poll-question"
                       required
@@ -1046,10 +1176,12 @@ export default function PresenterDashboard() {
                           disabled={options.length <= 2}
                           onClick={() =>
                             setOptions((previous) =>
-                              previous.filter((_, i) => i !== index)
+                              previous.filter(
+                                (_, i) => i !== index
+                              )
                             )
                           }
-                          className="rounded-xl border border-white/10 px-3 disabled:opacity-30"
+                          className="cursor-pointer rounded-xl border border-white/10 px-3 disabled:cursor-not-allowed disabled:opacity-30"
                           aria-label={`Remove option ${index + 1}`}
                         >
                           <Trash2 size={17} />
@@ -1063,9 +1195,12 @@ export default function PresenterDashboard() {
                       type="button"
                       disabled={options.length >= 10}
                       onClick={() =>
-                        setOptions((previous) => [...previous, ""])
+                        setOptions((previous) => [
+                          ...previous,
+                          "",
+                        ])
                       }
-                      className="rounded-xl border border-white/20 px-4 py-3 text-sm disabled:opacity-50"
+                      className="cursor-pointer rounded-xl border border-white/20 px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Plus size={16} className="mr-2 inline" />
                       Add Option
@@ -1083,11 +1218,13 @@ export default function PresenterDashboard() {
               </section>
             )}
 
+            {/* Event polls */}
             <section className={panel}>
               <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-xl font-semibold">
                   Event Polls
                 </h2>
+
                 <span className="text-sm text-slate-400">
                   {polls.length} polls
                 </span>
@@ -1109,9 +1246,10 @@ export default function PresenterDashboard() {
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <p className="text-xs text-violet-300">
-                              Poll #{poll.id}
+                            <p className="text-xs uppercase tracking-widest text-violet-400">
+                              Audience Poll
                             </p>
+
                             <h3 className="mt-2 text-lg font-semibold">
                               {poll.question}
                             </h3>
@@ -1154,7 +1292,7 @@ export default function PresenterDashboard() {
                                     "close"
                                   )
                                 }
-                                className="rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold disabled:opacity-50"
+                                className="cursor-pointer rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 <Square
                                   size={15}
@@ -1170,12 +1308,13 @@ export default function PresenterDashboard() {
                           {poll.options.map((option) => {
                             const optionResult =
                               pollResults?.options.find(
-                                (item) =>
-                                  item.optionId === option.id
+                                (result) =>
+                                  result.optionId === option.id
                               );
 
                             const votes =
                               optionResult?.votes ?? 0;
+
                             const percentage =
                               optionResult?.percentage ?? 0;
 
@@ -1183,6 +1322,7 @@ export default function PresenterDashboard() {
                               <div key={option.id}>
                                 <div className="mb-2 flex items-center justify-between gap-3 text-sm">
                                   <span>{option.text}</span>
+
                                   <span className="text-slate-400">
                                     {votes} votes ·{" "}
                                     {percentage.toFixed(1)}%
