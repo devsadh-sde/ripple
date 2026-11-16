@@ -192,3 +192,33 @@ Local MVP development and integration testing.
 ## License
 
 See the repository license, if provided.
+
+## Email Verification
+
+Ripple includes email-based organizer account verification.
+
+- New organizers receive a six-digit one-time password (OTP).
+- Verification codes expire after 10 minutes.
+- Codes are securely hashed using BCrypt.
+- Resend requests are rate-limited.
+- Organizer login requires a verified email address.
+- Mailpit supports local email testing.
+- Resend SMTP supports real email delivery.
+
+### Email Configuration
+
+Ripple uses Spring Boot's JavaMailSender.
+
+For real email testing, configure `RESEND_API_KEY` in your local `.env` file.
+
+The Resend testing sender (`onboarding@resend.dev`) can send to the account's registered testing address. Sending to arbitrary recipients requires a verified sending domain.
+
+Mailpit can be used instead by configuring Spring Mail to connect to the `mailpit` service on port 1025.
+
+Never commit API keys or passwords to GitHub.
+
+## Deployment Status
+
+Ripple currently runs locally using Docker Compose.
+
+AWS, Kubernetes, Redis, and Kafka are potential future enhancements, not features implemented in the current version.
